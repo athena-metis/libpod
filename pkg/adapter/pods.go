@@ -896,16 +896,19 @@ func kubeContainerToCreateConfig(ctx context.Context, containerYAML v1.Container
 	securityConfig.SeccompProfilePath = seccompPaths.findForContainer(containerConfig.Name)
 
 	containerConfig.Command = []string{}
-	if imageData != nil && imageData.Config != nil {
+	if imageData != nil && imageData.Config != nil && len(containerYAML.Command) == 0 {
 		containerConfig.Command = append(containerConfig.Command, imageData.Config.Entrypoint...)
 	}
 	if len(containerYAML.Command) != 0 {
 		containerConfig.Command = append(containerConfig.Command, containerYAML.Command...)
-	} else if imageData != nil && imageData.Config != nil {
+	} else if imageData != nil && imageData.Config != nil && len(containerYAML.Args) == 0 {
 		containerConfig.Command = append(containerConfig.Command, imageData.Config.Cmd...)
 	}
+
 	if imageData != nil && len(containerConfig.Command) == 0 {
 		return nil, errors.Errorf("No command specified in container YAML or as CMD or ENTRYPOINT in this image for %s", containerConfig.Name)
+	} else {
+		containerConfig.Command = append(containerConfig.Command, containerYAML.Args...)
 	}
 
 	containerConfig.UserCommand = containerConfig.Command
