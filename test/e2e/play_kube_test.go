@@ -38,6 +38,10 @@ spec:
     {{ range .Cmd }}
     - {{.}}
     {{ end }}
+    args:
+    {{ range .Args }}
+    - {{.}}
+    {{ end }}
     env:
     - name: PATH
       value: /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
@@ -80,6 +84,7 @@ status: {}
 var (
 	defaultCtrName  = "testCtr"
 	defaultCtrCmd   = []string{"top"}
+	defaultCtrArgs   = []string{"-o","TIME"}
 	defaultCtrImage = ALPINE
 	defaultPodName  = "testPod"
 	seccompPwdEPERM = []byte(`{"defaultAction":"SCMP_ACT_ALLOW","syscalls":[{"name":"getcwd","action":"SCMP_ACT_ERRNO"}]}`)
@@ -151,6 +156,7 @@ type Ctr struct {
 	Name            string
 	Image           string
 	Cmd             []string
+	Args 			[]string
 	SecurityContext bool
 	Caps            bool
 	CapAdd          []string
@@ -161,7 +167,7 @@ type Ctr struct {
 // getCtr takes a list of ctrOptions and returns a Ctr with sane defaults
 // and the configured options
 func getCtr(options ...ctrOption) *Ctr {
-	c := Ctr{defaultCtrName, defaultCtrImage, defaultCtrCmd, true, false, nil, nil, ""}
+	c := Ctr{defaultCtrName, defaultCtrImage, defaultCtrCmd, defaultCtrArgs, true, false, nil, nil, ""}
 	for _, option := range options {
 		option(&c)
 	}
@@ -173,6 +179,12 @@ type ctrOption func(*Ctr)
 func withCmd(cmd []string) ctrOption {
 	return func(c *Ctr) {
 		c.Cmd = cmd
+	}
+}
+
+func withArgs(args []string) ctrOption {
+	return func(c *Ctr) {
+		c.Args = args
 	}
 }
 
@@ -244,18 +256,81 @@ var _ = Describe("Podman generate kube", func() {
 
 	})
 
-	It("podman play kube test correct command", func() {
-		err := generateKubeYaml(getPod(), kubeYaml)
+	FIt("podman play kube test correct command and args when both container command and args set", func() {
+		err := generateKubeYaml(getPod(withCtr(getCtr(withImage('')))), kubeYaml)
 		Expect(err).To(BeNil())
-
 		kube := podmanTest.Podman([]string{"play", "kube", kubeYaml})
 		kube.WaitWithDefaultTimeout()
 		Expect(kube.ExitCode()).To(Equal(0))
 
-		inspect := podmanTest.Podman([]string{"inspect", defaultCtrName})
+		inspect := podmanTest.Podman([]string{"inspect", defaultCtrName, "--format", "'{{ .Config.Cmd }}'"})
 		inspect.WaitWithDefaultTimeout()
 		Expect(inspect.ExitCode()).To(Equal(0))
 		Expect(inspect.OutputToString()).To(ContainSubstring(defaultCtrCmd[0]))
+
+		inspectArgs := podmanTest.Podman([]string{"inspect", defaultCtrName, "--format", "'{{ .Args }}'"})
+		inspectArgs.WaitWithDefaultTimeout()
+		Expect(inspectArgs.ExitCode()).To(Equal(0))
+		Expect(inspectArgs.OutputToString()).To(ContainSubstring(defaultCtrArgs[0]))
+		Expect(inspectArgs.OutputToString()).To(ContainSubstring(defaultCtrArgs[1]))
+	})
+
+	FIt("podman play kube test correct command when only container args specified", func() {
+		p := getPod(withCtr(getCtr(withCmd([]string{}), withArgs([]string{}))))
+		err := generateKubeYaml(getPod(), kubeYaml)
+		Expect(err).To(BeNil())
+		kube := podmanTest.Podman([]string{"play", "kube", kubeYaml})
+		kube.WaitWithDefaultTimeout()
+		Expect(kube.ExitCode()).To(Equal(0))
+
+		inspect := podmanTest.Podman([]string{"inspect", defaultCtrName, "--format", "'{{ .Config.Cmd }}'"})
+		inspect.WaitWithDefaultTimeout()
+		Expect(inspect.ExitCode()).To(Equal(0))
+		Expect(inspect.OutputToString()).To(ContainSubstring(defaultCtrCmd[0]))
+
+		inspectArgs := podmanTest.Podman([]string{"inspect", defaultCtrName, "--format", "'{{ .Args }}'"})
+		inspectArgs.WaitWithDefaultTimeout()
+		Expect(inspectArgs.ExitCode()).To(Equal(0))
+		Expect(inspectArgs.OutputToString()).To(ContainSubstring(defaultCtrArgs[0]))
+		Expect(inspectArgs.OutputToString()).To(ContainSubstring(defaultCtrArgs[1]))
+	})
+
+	FIt("podman play kube test correct command when only container command specified", func() {
+		err := generateKubeYaml(getPod(), kubeYaml)
+		Expect(err).To(BeNil())
+		kube := podmanTest.Podman([]string{"play", "kube", kubeYaml})
+		kube.WaitWithDefaultTimeout()
+		Expect(kube.ExitCode()).To(Equal(0))
+
+		inspect := podmanTest.Podman([]string{"inspect", defaultCtrName, "--format", "'{{ .Config.Cmd }}'"})
+		inspect.WaitWithDefaultTimeout()
+		Expect(inspect.ExitCode()).To(Equal(0))
+		Expect(inspect.OutputToString()).To(ContainSubstring(defaultCtrCmd[0]))
+
+		inspectArgs := podmanTest.Podman([]string{"inspect", defaultCtrName, "--format", "'{{ .Args }}'"})
+		inspectArgs.WaitWithDefaultTimeout()
+		Expect(inspectArgs.ExitCode()).To(Equal(0))
+		Expect(inspectArgs.OutputToString()).To(ContainSubstring(defaultCtrArgs[0]))
+		Expect(inspectArgs.OutputToString()).To(ContainSubstring(defaultCtrArgs[1]))
+	})
+
+	FIt("podman play kube test correct command when no container command/args specified", func() {
+		err := generateKubeYaml(getPod(), kubeYaml)
+		Expect(err).To(BeNil())
+		kube := podmanTest.Podman([]string{"play", "kube", kubeYaml})
+		kube.WaitWithDefaultTimeout()
+		Expect(kube.ExitCode()).To(Equal(0))
+
+		inspect := podmanTest.Podman([]string{"inspect", defaultCtrName, "--format", "'{{ .Config.Cmd }}'"})
+		inspect.WaitWithDefaultTimeout()
+		Expect(inspect.ExitCode()).To(Equal(0))
+		Expect(inspect.OutputToString()).To(ContainSubstring(defaultCtrCmd[0]))
+
+		inspectArgs := podmanTest.Podman([]string{"inspect", defaultCtrName, "--format", "'{{ .Args }}'"})
+		inspectArgs.WaitWithDefaultTimeout()
+		Expect(inspectArgs.ExitCode()).To(Equal(0))
+		Expect(inspectArgs.OutputToString()).To(ContainSubstring(defaultCtrArgs[0]))
+		Expect(inspectArgs.OutputToString()).To(ContainSubstring(defaultCtrArgs[1]))
 	})
 
 	It("podman play kube test correct output", func() {
